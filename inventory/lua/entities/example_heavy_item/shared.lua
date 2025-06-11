@@ -11,7 +11,7 @@ ENT.AdminSpawnable = true
 
 -- Here inventory variables goes:
 ENT.Pickable = true -- That makes us able to pick up this item
-ENT.StackSize = 2 -- [optional] Make it 1 if you don't want to stack this item in inventory
+ENT.StackSize = 20 -- [optional] Maximum items per stack
 ENT.Weight = 11 -- [optional]
 ENT.Name = "Example Heavy Item" -- [optional]
 -- 

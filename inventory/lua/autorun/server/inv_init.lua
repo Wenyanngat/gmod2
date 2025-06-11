@@ -32,19 +32,20 @@ if SERVER then
     -- Weight related functions removed
 
     local function saveData()end
-    local function loadData(ply, typ) 
+    local function loadData(ply, typ)
         if file.Exists( InventoryConfig.General.playerDataFolder.."/"..ply:SteamID64().."_"..typ..".dat", "DATA" ) then
             local data = util.JSONToTable(file.Read( InventoryConfig.General.playerDataFolder.."/"..ply:SteamID64().."_"..typ..".dat", "DATA" ))
-            if typ == "Inventory" and #data < 40 then
-                for i = #data + 1, 40 do
-                    data[i] = {isOccupied = false, Count = 0, Name = "unknown", ItemClass = "unknown", WeaponClass = "unknown", SingleWeight = 0}
+            local max = typ == "Inventory" and 40 or 32
+            for i = 1, max do
+                data[i] = data[i] or {isOccupied = false, Count = 0, Name = "unknown", ItemClass = "unknown", WeaponClass = "unknown", SingleWeight = 0, MaxStack = 20}
+                if data[i].MaxStack == nil then
+                    data[i].MaxStack = 20
                 end
             end
             return data
         else
             local eq = {}
-            local range=0
-            if typ == "Inventory" then range = 40 else range = 32 end
+            local range = typ == "Inventory" and 40 or 32
             for i=1,range do
                 eq[i] = {}
                 eq[i].isOccupied = false
@@ -53,6 +54,7 @@ if SERVER then
                 eq[i].ItemClass = "unknown"
                 eq[i].WeaponClass = "unknown"
                 eq[i].SingleWeight = 0
+                eq[i].MaxStack = 20
             end
             saveData(ply, eq, typ)
             return eq
@@ -255,9 +257,9 @@ if SERVER then
         if item1 == item2 then return end -- in case you're trying to drag this same item on itself
         local type = net.ReadString()
         local eq = loadData(ply,type) 
-        if  eq[item1].ItemClass == eq[item2].ItemClass and 
-            eq[item1].Name == eq[item2].Name and 
-            eq[item1].Count+eq[item2].Count <= eq[item2].MaxStack then
+        if  eq[item1].ItemClass == eq[item2].ItemClass and
+            eq[item1].Name == eq[item2].Name and
+            eq[item1].Count + eq[item2].Count <= (eq[item2].MaxStack or eq[item1].MaxStack or 20) then
                 eq[item1].Count = eq[item2].Count + eq[item1].Count
                 eq[item2].isOccupied = false
                 eq[item2].Count = 0 
@@ -280,7 +282,8 @@ if SERVER then
         else
             -- nothing to check when weight system is disabled
         end
-        if inv[item1].Name == bank[item2].Name and inv[item1].ItemClass == bank[item2].ItemClass and inv[item1].Count+bank[item2].Count <=bank[item2].MaxStack then
+        if inv[item1].Name == bank[item2].Name and inv[item1].ItemClass == bank[item2].ItemClass and
+            inv[item1].Count + bank[item2].Count <= (bank[item2].MaxStack or inv[item1].MaxStack or 20) then
             if whereDropped == "Inventory" then 
                 inv[item1].Count = inv[item1].Count+bank[item2].Count
                 bank[item2].isOccupied = false
