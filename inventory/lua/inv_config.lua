@@ -16,24 +16,16 @@ InventoryConfig = {
         openStorage = "items/ammo_pickup.wav",
     },
     Groups = {
-        user = { 
-            inventoryMaxWeight = 30, 
-            bankMaxWeight = 250,
-        },
-        vip = { 
-            inventoryMaxWeight = 45, 
-            bankMaxWeight = 450,
-        } 
+        user = {},
+        vip = {}
     },
     Messages = {
         noSpace = "No space in inventory.",
-        tooHeavy = "Too Heavy.",
     },
     GuiText = {
         use = "Use",
         drop = "Drop",
         dropAll = "Drop All",
-        totalWeight = "Вес: ",
     },
 }
   

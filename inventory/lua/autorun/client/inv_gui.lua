@@ -19,21 +19,11 @@ if CLIENT then
             Invenotry_Gui.InvFrame:SetDeleteOnClose(false)
             Invenotry_Gui.InvFrame:SetVisible(false)
 
-            local WeightLabel = vgui.Create("DLabel", Invenotry_Gui.InvFrame)
-            local fx, fy = Invenotry_Gui.InvFrame:GetSize()
-            WeightLabel:SetSize(fx, 50)
-            WeightLabel:SetPos(0, fy - 55)
-            WeightLabel:SetContentAlignment(5)
-            WeightLabel:SetFont("WeightFont")
-            WeightLabel:SetColor(InventoryConfig.Colors.textColor)
-            WeightLabel:SetText(
-                InventoryConfig.GuiText.totalWeight .. "0 / " .. getMaxWeight(LocalPlayer(), "Рюкзак") .. " кг"
-            )
+            -- Weight system removed
             local lastTime = 0
             function refreshInv(tab)
                 if tab ~= nil then
-                    local totalWeight = 0
-                    for i = 1, 16 do
+                    for i = 1, 40 do
                         LocalPlayer().InventorySlots[i].IsOccupied = tab[i].IsOccupied
                         LocalPlayer().InventorySlots[i].VGui:SetCount(tab[i].Count)
                         if tab[i].Model ~= nil and tab[i].Count > 0 then
@@ -43,12 +33,7 @@ if CLIENT then
                         LocalPlayer().InventorySlots[i].VGui:SetName(tab[i].Name)
                         LocalPlayer().InventorySlots[i].VGui:SetItemClass(tab[i].ItemClass)
                         LocalPlayer().InventorySlots[i].VGui:SetWeaponClass(tab[i].WeaponClass)
-                        totalWeight = (totalWeight + (tonumber(tab[i].SingleWeight) * tonumber(tab[i].Count)))
                     end
-                    WeightLabel:SetText( 
-                        InventoryConfig.GuiText.totalWeight ..
-                            totalWeight .. " / " .. getMaxWeight(LocalPlayer(), "Inventory") .. " кг"
-                    )
                 end
             end
             net.Receive(
@@ -87,7 +72,7 @@ if CLIENT then
                             else
                                 net.Start("inv_requestUpdate")
                                 net.SendToServer()
-                                for e = 1, 16 do
+                                for e = 1, 40 do
                                     ply.InventorySlots[e].VGui:SetAlpha(255)
                                 end
                                 for e = 1, 32 do
@@ -106,13 +91,17 @@ if CLIENT then
             end
             hook.Add("Think", "bindThinkInv", bindThinkInv)
 
-            local grid = vgui.Create("DGrid", Invenotry_Gui.InvFrame)
-            grid:SetPos(10 * scale, 30 * scale)
+            local scroll = vgui.Create("DScrollPanel", Invenotry_Gui.InvFrame)
+            scroll:SetPos(10 * scale, 30 * scale)
+            scroll:SetSize(72 * 4, 72 * 4)
+
+            local grid = vgui.Create("DGrid", scroll)
+            grid:Dock(FILL)
             grid:SetCols(4)
             grid:SetColWide(72)
             grid:SetRowHeight(72)
 
-            for i = 1, 16 do
+            for i = 1, 40 do
                 ply.InventorySlots[i] = {}
                 ply.InventorySlots[i].VGui = vgui.Create("inv_slot", Invenotry_Gui.InvFrame)
                 ply.InventorySlots[i].IsOccupied = false
@@ -125,11 +114,11 @@ if CLIENT then
                     function(pnl, item, drop, i, x, y)
                         item = item[1]
                         if pnl.Id == nil then
-                            for e = 1, 16 do
+                            for e = 1, 40 do
                                 ply.InventorySlots[e].VGui:SetAlpha(255)
                             end
                         end
-                        for e = 1, 16 do
+                        for e = 1, 40 do
                             if ply.InventorySlots[e].VGui.Id == pnl.Id then
                                 ply.InventorySlots[e].VGui:SetAlpha(100)
                             else
@@ -155,7 +144,7 @@ if CLIENT then
                     "inv_droppingFromBank",
                     function(pnl, item, drop, i, x, y)
                         item = item[1]
-                        for e = 1, 16 do
+                        for e = 1, 40 do
                             if ply.InventorySlots[e].VGui.Id == pnl.Id then
                                 ply.InventorySlots[e].VGui:SetAlpha(100)
                             else
