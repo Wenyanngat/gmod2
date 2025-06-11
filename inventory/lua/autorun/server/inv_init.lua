@@ -29,30 +29,32 @@ if SERVER then
         net.WriteString(msg)
         net.Send(ply) 
     end
-    local function getTotalWeight(tab)
-        local totalWeight = 0
-        for i, val in ipairs(tab) do
-            totalWeight = totalWeight+(val.SingleWeight * val.Count)
-        end 
-        return totalWeight
-    end
+    -- Weight related functions removed
 
     local function saveData()end
-    local function loadData(ply, typ) 
+    local function loadData(ply, typ)
         if file.Exists( InventoryConfig.General.playerDataFolder.."/"..ply:SteamID64().."_"..typ..".dat", "DATA" ) then
-            return util.JSONToTable(file.Read( InventoryConfig.General.playerDataFolder.."/"..ply:SteamID64().."_"..typ..".dat", "DATA" ))
+            local data = util.JSONToTable(file.Read( InventoryConfig.General.playerDataFolder.."/"..ply:SteamID64().."_"..typ..".dat", "DATA" ))
+            local max = typ == "Inventory" and 40 or 32
+            for i = 1, max do
+                data[i] = data[i] or {isOccupied = false, Count = 0, Name = "unknown", ItemClass = "unknown", WeaponClass = "unknown", SingleWeight = 0, MaxStack = 20}
+                if data[i].MaxStack == nil then
+                    data[i].MaxStack = 20
+                end
+            end
+            return data
         else
             local eq = {}
-            local range=0
-            if typ == "Inventory" then range = 16 else range = 32 end
+            local range = typ == "Inventory" and 40 or 32
             for i=1,range do
                 eq[i] = {}
-                eq[i].isOccupied = false 
-                eq[i].Count = 0 
+                eq[i].isOccupied = false
+                eq[i].Count = 0
                 eq[i].Name = "unknown"
                 eq[i].ItemClass = "unknown"
                 eq[i].WeaponClass = "unknown"
                 eq[i].SingleWeight = 0
+                eq[i].MaxStack = 20
             end
             saveData(ply, eq, typ)
             return eq
@@ -180,54 +182,50 @@ if SERVER then
     local plyMeta = FindMetaTable( "Player" )         
     function plyMeta:AddInventoryItem(ent, count)
         local eq = loadData(self,"Inventory")  
-        if eq == nil then 
-            eq = {} 
-            for i=1,16 do
+        if eq == nil then
+            eq = {}
+            for i=1,40 do
                 eq[i] = {}
-                eq[i].isOccupied = false 
+                eq[i].isOccupied = false
                 eq[i].Count = 0
                 eq[i].Name = "unknown"
                 eq[i].ItemClass = "unknown"
                 eq[i].WeaponClass = "unknown"
                 eq[i].SingleWeight = 0
             end
-        end 
-        local totalWeight = getTotalWeight(eq)
+        end
         for i, slot in ipairs(eq) do
             if ent.StackSize == nil then ent.StackSize = 1 end
-            if slot.isOccupied == false or (ent.StackSize > slot.Count and slot.ItemClass == ent:GetClass()) then 
+            if slot.isOccupied == false or (ent.StackSize > slot.Count and slot.ItemClass == ent:GetClass()) then
                 if ent.Weight ~= nil then
                     slot.SingleWeight = ent.Weight
                 else
                     slot.SingleWeight = 1
                 end
-                if (slot.SingleWeight + totalWeight) <= getMaxWeight(self, "Inventory") then 
-                    slot.isOccupied = true
-                    if ent.Name ~= nil then slot.Name = ent.Name else
-                        slot.Name = ent:GetClass()
-                    end
-                    slot.ItemClass = ent:GetClass() 
-                    slot.Count = slot.Count + 1
-                    slot.Model = ent:GetModel() 
-                    slot.MaxStack = ent.StackSize
-                    if slot.ItemClass == "spawned_weapon" then  
-                        slot.WeaponClass = ent:GetWeaponClass()
-                    else
-                        slot.WeaponClass = nil
-                    end  
-                    saveData(self, eq,"Inventory")
-                    if ent:GetClass() == "spawned_weapon" and ent:Getamount() > 1 then 
-                        ent:Setamount(ent:Getamount()-1)
-                    else
-                        ent:Remove()
-                    end
-                    self:EmitSound(InventoryConfig.Sounds.pickUp)
-                    return
+                slot.isOccupied = true
+                if ent.Name ~= nil then
+                    slot.Name = ent.Name
                 else
-                    showNotification(self, InventoryConfig.Messages.tooHeavy)
-                    return
+                    slot.Name = ent:GetClass()
                 end
-            end  
+                slot.ItemClass = ent:GetClass()
+                slot.Count = slot.Count + 1
+                slot.Model = ent:GetModel()
+                slot.MaxStack = ent.StackSize
+                if slot.ItemClass == "spawned_weapon" then
+                    slot.WeaponClass = ent:GetWeaponClass()
+                else
+                    slot.WeaponClass = nil
+                end
+                saveData(self, eq,"Inventory")
+                if ent:GetClass() == "spawned_weapon" and ent:Getamount() > 1 then
+                    ent:Setamount(ent:Getamount()-1)
+                else
+                    ent:Remove()
+                end
+                self:EmitSound(InventoryConfig.Sounds.pickUp)
+                return
+            end
         end
         -- no space
         showNotification(ply, InventoryConfig.Messages.noSpace)
@@ -259,9 +257,9 @@ if SERVER then
         if item1 == item2 then return end -- in case you're trying to drag this same item on itself
         local type = net.ReadString()
         local eq = loadData(ply,type) 
-        if  eq[item1].ItemClass == eq[item2].ItemClass and 
-            eq[item1].Name == eq[item2].Name and 
-            eq[item1].Count+eq[item2].Count <= eq[item2].MaxStack then
+        if  eq[item1].ItemClass == eq[item2].ItemClass and
+            eq[item1].Name == eq[item2].Name and
+            eq[item1].Count + eq[item2].Count <= (eq[item2].MaxStack or eq[item1].MaxStack or 20) then
                 eq[item1].Count = eq[item2].Count + eq[item1].Count
                 eq[item2].isOccupied = false
                 eq[item2].Count = 0 
@@ -279,20 +277,13 @@ if SERVER then
         local whereDropped = net.ReadString()
         local inv = loadData(ply,"Inventory")
         local bank = loadData(ply,"Bank")
-        if whereDropped == "Inventory" then 
-            local totalWeight = getTotalWeight(inv)
-            if not ((totalWeight+(inv[item1].Count+bank[item2].Count)*bank[item2].SingleWeight) <= getMaxWeight(ply, whereDropped)) then
-                showNotification(ply, InventoryConfig.Messages.tooHeavy)
-                return 
-            end
+        if whereDropped == "Inventory" then
+            -- nothing to check when weight system is disabled
         else
-            local totalWeight = getTotalWeight(bank)
-            if not ((totalWeight+(inv[item1].Count+bank[item2].Count)*inv[item1].SingleWeight) <= getMaxWeight(ply, whereDropped)) then
-                showNotification(ply, InventoryConfig.Messages.tooHeavy)
-                return  
-            end
+            -- nothing to check when weight system is disabled
         end
-        if inv[item1].Name == bank[item2].Name and inv[item1].ItemClass == bank[item2].ItemClass and inv[item1].Count+bank[item2].Count <=bank[item2].MaxStack then
+        if inv[item1].Name == bank[item2].Name and inv[item1].ItemClass == bank[item2].ItemClass and
+            inv[item1].Count + bank[item2].Count <= (bank[item2].MaxStack or inv[item1].MaxStack or 20) then
             if whereDropped == "Inventory" then 
                 inv[item1].Count = inv[item1].Count+bank[item2].Count
                 bank[item2].isOccupied = false
