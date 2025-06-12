@@ -15,14 +15,7 @@ if CLIENT then
     Invenotry_Gui.BankFrame:SetDeleteOnClose(false)  
     Invenotry_Gui.BankFrame:SetVisible(false)  
  
-    local WeightLabel = vgui.Create("DLabel", Invenotry_Gui.BankFrame) 
-    local fx, fy = Invenotry_Gui.BankFrame:GetSize()
-    WeightLabel:SetSize(fx, 50)
-    WeightLabel:SetPos(0,fy-55)  
-    WeightLabel:SetContentAlignment( 5 )  
-    WeightLabel:SetColor(InventoryConfig.Colors.textColor)
-    WeightLabel:SetFont("WeightFont")               
-    WeightLabel:SetText(InventoryConfig.GuiText.totalWeight.."0 / "..getMaxWeight(LocalPlayer(), "Хранилище").." кг")
+    -- Weight system removed
 
     net.Receive( "openBankGui", function( len, player )
         local invW, invH = Invenotry_Gui.InvFrame:GetSize()
@@ -44,19 +37,16 @@ if CLIENT then
     local lastTime=0  
     function refreshBank(tab)
         if tab ~= nil then
-            local totalWeight = 0
-            for i = 1, 32 do 
-                LocalPlayer().BankSlots[i].IsOccupied  = tab[i].IsOccupied 
-                LocalPlayer().BankSlots[i].VGui:SetCount(tab[i].Count)  
+            for i = 1, 32 do
+                LocalPlayer().BankSlots[i].IsOccupied  = tab[i].IsOccupied
+                LocalPlayer().BankSlots[i].VGui:SetCount(tab[i].Count)
                 if tab[i].Model ~= nil and tab[i].Count > 0 then
-                    LocalPlayer().BankSlots[i].VGui:SetModel(tab[i].Model) 
-                end 
-                LocalPlayer().BankSlots[i].VGui:SetName(tab[i].Name) 
-                LocalPlayer().BankSlots[i].VGui:SetItemClass(tab[i].ItemClass) 
-                LocalPlayer().BankSlots[i].VGui:SetWeaponClass(tab[i].WeaponClass) 
-                totalWeight = (totalWeight + (tonumber(tab[i].SingleWeight) * tonumber(tab[i].Count)))
-            end 
-            WeightLabel:SetText(InventoryConfig.GuiText.totalWeight..totalWeight.." / "..getMaxWeight(LocalPlayer(), "Хранилище").." кг")
+                    LocalPlayer().BankSlots[i].VGui:SetModel(tab[i].Model)
+                end
+                LocalPlayer().BankSlots[i].VGui:SetName(tab[i].Name)
+                LocalPlayer().BankSlots[i].VGui:SetItemClass(tab[i].ItemClass)
+                LocalPlayer().BankSlots[i].VGui:SetWeaponClass(tab[i].WeaponClass)
+            end
         end
     end 
     net.Receive( "forceRefresh_bank", function( len, ply ) refreshBank(net.ReadTable())  end)
@@ -84,8 +74,8 @@ if CLIENT then
                  ply.BankSlots[e].VGui:SetAlpha(255) 
                 end
             end
-            for e = 1, 16 do
-                ply.InventorySlots[e].VGui:SetAlpha(255) 
+            for e = 1, 40 do
+                ply.InventorySlots[e].VGui:SetAlpha(255)
             end
             if drop then
                 -- drop na bank  
@@ -109,8 +99,8 @@ if CLIENT then
                  ply.BankSlots[e].VGui:SetAlpha(255) 
                 end
             end
-            for e = 1, 16 do
-                ply.InventorySlots[e].VGui:SetAlpha(255) 
+            for e = 1, 40 do
+                ply.InventorySlots[e].VGui:SetAlpha(255)
             end
             if drop then
                 net.Start("swapItems_inv")

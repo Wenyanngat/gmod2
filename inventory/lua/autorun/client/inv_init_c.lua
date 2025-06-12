@@ -30,10 +30,10 @@ end
 
 hook.Add( "Think", "clearAlphaIfNeeded", function()
     if not input.IsMouseDown(MOUSE_LEFT) and (Invenotry_Gui.InvFrame:IsVisible() or Invenotry_Gui.BankFrame:IsVisible()) then
-        for e=1,32 do  
+        for e=1,32 do
             LocalPlayer().BankSlots[e].VGui:SetAlpha(255)
         end
-        for e=1,16 do   
+        for e=1,40 do
             LocalPlayer().InventorySlots[e].VGui:SetAlpha(255)
         end
     end

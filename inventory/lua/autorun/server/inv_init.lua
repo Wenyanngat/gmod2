@@ -7,7 +7,8 @@ if SERVER then
     AddCSLuaFile( "lua/autorun/client/inv_gui.lua")
     AddCSLuaFile( "lua/autorun/client/inv_bank_gui.lua")
     AddCSLuaFile( "lua/autorun/client/inv_init_c.lua")
-    AddCSLuaFile( "lua/inv_shared.lua")   
+    AddCSLuaFile( "lua/autorun/client/inv_trade_gui.lua")
+    AddCSLuaFile( "lua/inv_shared.lua")
     AddCSLuaFile( "lua/inv_config.lua")
  
     util.AddNetworkString( "dropEnt_inv" )
@@ -21,40 +22,152 @@ if SERVER then
     util.AddNetworkString( "transferItems_inv" )
     util.AddNetworkString( "validateFiles_inv" )
 
+    -- trading
+    util.AddNetworkString( "trade_open" )
+    util.AddNetworkString( "trade_select" )
+    util.AddNetworkString( "trade_confirm" )
+    util.AddNetworkString( "trade_update" )
+    util.AddNetworkString( "trade_end" )
+
 
     util.AddNetworkString( "inv_requestUpdate" )
+
+    -- state for player trades
+    local ActiveTrades = {}
+
+    local loadData
+    local saveData
+
+    local function clearSlot()
+        return {
+            isOccupied = false,
+            Count = 0,
+            Name = "unknown",
+            ItemClass = "unknown",
+            WeaponClass = "unknown",
+            SingleWeight = 0,
+            MaxStack = 20
+        }
+    end
+
+    local function insertItem(inv, data)
+        for i = 1, 40 do
+            local s = inv[i]
+            if s.ItemClass == data.ItemClass and s.Name == data.Name and s.Count + data.Count <= (s.MaxStack or data.MaxStack or 20) then
+                s.Count = s.Count + data.Count
+                s.isOccupied = true
+                return true
+            end
+        end
+        for i = 1, 40 do
+            local s = inv[i]
+            if not s.isOccupied then
+                inv[i] = table.Copy(data)
+                return true
+            end
+        end
+        return false
+    end
+
+    local function tradeBroadcast(p1, p2)
+        local s1, s2 = ActiveTrades[p1], ActiveTrades[p2]
+        if not s1 or not s2 then return end
+        net.Start("trade_update")
+        net.WriteEntity(p2)
+        net.WriteTable(s1.offers)
+        net.WriteTable(s1.wants)
+        net.WriteBool(s1.confirmed)
+        net.WriteTable(s2.offers)
+        net.WriteTable(s2.wants)
+        net.WriteBool(s2.confirmed)
+        net.Send({p1, p2})
+    end
+
+    local function endTrade(p1, p2)
+        ActiveTrades[p1] = nil
+        ActiveTrades[p2] = nil
+        net.Start("trade_end")
+        net.Send({p1, p2})
+    end
+
+    local function finalizeTrade(p1, p2)
+        local inv1 = loadData(p1, "Inventory")
+        local inv2 = loadData(p2, "Inventory")
+        for id in pairs(ActiveTrades[p1].offers) do
+            local slot = inv1[id]
+            if slot and slot.Count > 0 then
+                if not insertItem(inv2, slot) then
+                    showNotification(p1, InventoryConfig.Messages.noSpace)
+                    showNotification(p2, InventoryConfig.Messages.noSpace)
+                    endTrade(p1, p2)
+                    return
+                end
+                inv1[id] = clearSlot()
+            end
+        end
+        for id in pairs(ActiveTrades[p2].offers) do
+            local slot = inv2[id]
+            if slot and slot.Count > 0 then
+                if not insertItem(inv1, slot) then
+                    showNotification(p1, InventoryConfig.Messages.noSpace)
+                    showNotification(p2, InventoryConfig.Messages.noSpace)
+                    endTrade(p1, p2)
+                    return
+                end
+                inv2[id] = clearSlot()
+            end
+        end
+        saveData(p1, inv1, "Inventory")
+        saveData(p2, inv2, "Inventory")
+        endTrade(p1, p2)
+    end
+
+    local function startTrade(p1, p2)
+        ActiveTrades[p1] = {partner = p2, offers = {}, wants = {}, confirmed = false}
+        ActiveTrades[p2] = {partner = p1, offers = {}, wants = {}, confirmed = false}
+
+        net.Start("trade_open")
+        net.WriteEntity(p2)
+        net.WriteTable(loadData(p1, "Inventory"))
+        net.WriteTable(loadData(p2, "Inventory"))
+        net.Send(p1)
+
+        net.Start("trade_open")
+        net.WriteEntity(p1)
+        net.WriteTable(loadData(p2, "Inventory"))
+        net.WriteTable(loadData(p1, "Inventory"))
+        net.Send(p2)
+    end
 
     local function showNotification(ply, msg)
         net.Start("inv_showNotification")
         net.WriteString(msg)
-        net.Send(ply) 
+        net.Send(ply)
     end
-    local function getTotalWeight(tab)
-        local totalWeight = 0
-        for i, val in ipairs(tab) do
-            totalWeight = totalWeight+(val.SingleWeight * val.Count)
-        end 
-        return totalWeight
-    end
+    -- Weight related functions removed
 
-    local function saveData()end
-    local function loadData(ply, typ) 
-        if file.Exists( InventoryConfig.General.playerDataFolder.."/"..ply:SteamID64().."_"..typ..".dat", "DATA" ) then
-            return util.JSONToTable(file.Read( InventoryConfig.General.playerDataFolder.."/"..ply:SteamID64().."_"..typ..".dat", "DATA" ))
+    local function loadData(ply, typ)
+        local path = InventoryConfig.General.playerDataFolder .. "/" .. ply:SteamID64() .. "_" .. typ .. ".dat"
+        if file.Exists(path, "DATA") then
+            local data = util.JSONToTable(file.Read(path, "DATA")) or {}
+            local max = typ == "Inventory" and 40 or 32
+            for i = 1, max do
+                data[i] = data[i] or clearSlot()
+                if data[i].MaxStack == nil then
+                    data[i].MaxStack = 20
+                end
+            end
+            return data
         else
             local eq = {}
-            local range=0
-            if typ == "Inventory" then range = 16 else range = 32 end
-            for i=1,range do
-                eq[i] = {}
-                eq[i].isOccupied = false 
-                eq[i].Count = 0 
-                eq[i].Name = "unknown"
-                eq[i].ItemClass = "unknown"
-                eq[i].WeaponClass = "unknown"
-                eq[i].SingleWeight = 0
+            local range = typ == "Inventory" and 40 or 32
+            for i = 1, range do
+                eq[i] = clearSlot()
             end
-            saveData(ply, eq, typ)
+            if not file.Exists(InventoryConfig.General.playerDataFolder, "DATA") then
+                file.CreateDir(InventoryConfig.General.playerDataFolder)
+            end
+            file.Write(path, util.TableToJSON(eq))
             return eq
         end
     end
@@ -180,57 +293,53 @@ if SERVER then
     local plyMeta = FindMetaTable( "Player" )         
     function plyMeta:AddInventoryItem(ent, count)
         local eq = loadData(self,"Inventory")  
-        if eq == nil then 
-            eq = {} 
-            for i=1,16 do
+        if eq == nil then
+            eq = {}
+            for i=1,40 do
                 eq[i] = {}
-                eq[i].isOccupied = false 
+                eq[i].isOccupied = false
                 eq[i].Count = 0
                 eq[i].Name = "unknown"
                 eq[i].ItemClass = "unknown"
                 eq[i].WeaponClass = "unknown"
                 eq[i].SingleWeight = 0
             end
-        end 
-        local totalWeight = getTotalWeight(eq)
+        end
         for i, slot in ipairs(eq) do
             if ent.StackSize == nil then ent.StackSize = 1 end
-            if slot.isOccupied == false or (ent.StackSize > slot.Count and slot.ItemClass == ent:GetClass()) then 
+            if slot.isOccupied == false or (ent.StackSize > slot.Count and slot.ItemClass == ent:GetClass()) then
                 if ent.Weight ~= nil then
                     slot.SingleWeight = ent.Weight
                 else
                     slot.SingleWeight = 1
                 end
-                if (slot.SingleWeight + totalWeight) <= getMaxWeight(self, "Inventory") then 
-                    slot.isOccupied = true
-                    if ent.Name ~= nil then slot.Name = ent.Name else
-                        slot.Name = ent:GetClass()
-                    end
-                    slot.ItemClass = ent:GetClass() 
-                    slot.Count = slot.Count + 1
-                    slot.Model = ent:GetModel() 
-                    slot.MaxStack = ent.StackSize
-                    if slot.ItemClass == "spawned_weapon" then  
-                        slot.WeaponClass = ent:GetWeaponClass()
-                    else
-                        slot.WeaponClass = nil
-                    end  
-                    saveData(self, eq,"Inventory")
-                    if ent:GetClass() == "spawned_weapon" and ent:Getamount() > 1 then 
-                        ent:Setamount(ent:Getamount()-1)
-                    else
-                        ent:Remove()
-                    end
-                    self:EmitSound(InventoryConfig.Sounds.pickUp)
-                    return
+                slot.isOccupied = true
+                if ent.Name ~= nil then
+                    slot.Name = ent.Name
                 else
-                    showNotification(self, InventoryConfig.Messages.tooHeavy)
-                    return
+                    slot.Name = ent:GetClass()
                 end
-            end  
+                slot.ItemClass = ent:GetClass()
+                slot.Count = slot.Count + 1
+                slot.Model = ent:GetModel()
+                slot.MaxStack = ent.StackSize
+                if slot.ItemClass == "spawned_weapon" then
+                    slot.WeaponClass = ent:GetWeaponClass()
+                else
+                    slot.WeaponClass = nil
+                end
+                saveData(self, eq,"Inventory")
+                if ent:GetClass() == "spawned_weapon" and ent:Getamount() > 1 then
+                    ent:Setamount(ent:Getamount()-1)
+                else
+                    ent:Remove()
+                end
+                self:EmitSound(InventoryConfig.Sounds.pickUp)
+                return
+            end
         end
         -- no space
-        showNotification(ply, InventoryConfig.Messages.noSpace)
+        showNotification(self, InventoryConfig.Messages.noSpace)
     end
  
 
@@ -259,9 +368,9 @@ if SERVER then
         if item1 == item2 then return end -- in case you're trying to drag this same item on itself
         local type = net.ReadString()
         local eq = loadData(ply,type) 
-        if  eq[item1].ItemClass == eq[item2].ItemClass and 
-            eq[item1].Name == eq[item2].Name and 
-            eq[item1].Count+eq[item2].Count <= eq[item2].MaxStack then
+        if  eq[item1].ItemClass == eq[item2].ItemClass and
+            eq[item1].Name == eq[item2].Name and
+            eq[item1].Count + eq[item2].Count <= (eq[item2].MaxStack or eq[item1].MaxStack or 20) then
                 eq[item1].Count = eq[item2].Count + eq[item1].Count
                 eq[item2].isOccupied = false
                 eq[item2].Count = 0 
@@ -279,20 +388,13 @@ if SERVER then
         local whereDropped = net.ReadString()
         local inv = loadData(ply,"Inventory")
         local bank = loadData(ply,"Bank")
-        if whereDropped == "Inventory" then 
-            local totalWeight = getTotalWeight(inv)
-            if not ((totalWeight+(inv[item1].Count+bank[item2].Count)*bank[item2].SingleWeight) <= getMaxWeight(ply, whereDropped)) then
-                showNotification(ply, InventoryConfig.Messages.tooHeavy)
-                return 
-            end
+        if whereDropped == "Inventory" then
+            -- nothing to check when weight system is disabled
         else
-            local totalWeight = getTotalWeight(bank)
-            if not ((totalWeight+(inv[item1].Count+bank[item2].Count)*inv[item1].SingleWeight) <= getMaxWeight(ply, whereDropped)) then
-                showNotification(ply, InventoryConfig.Messages.tooHeavy)
-                return  
-            end
+            -- nothing to check when weight system is disabled
         end
-        if inv[item1].Name == bank[item2].Name and inv[item1].ItemClass == bank[item2].ItemClass and inv[item1].Count+bank[item2].Count <=bank[item2].MaxStack then
+        if inv[item1].Name == bank[item2].Name and inv[item1].ItemClass == bank[item2].ItemClass and
+            inv[item1].Count + bank[item2].Count <= (bank[item2].MaxStack or inv[item1].MaxStack or 20) then
             if whereDropped == "Inventory" then 
                 inv[item1].Count = inv[item1].Count+bank[item2].Count
                 bank[item2].isOccupied = false
@@ -315,5 +417,58 @@ if SERVER then
         sound.Play( InventoryConfig.Sounds.dragItem, ply:GetPos() )
         saveData(ply, bank,"Bank")
         saveData(ply, inv,"Inventory")
+    end)
+
+    net.Receive("trade_select", function(len, ply)
+        local own = net.ReadBool()
+        local slot = net.ReadUInt(8)
+        local s = ActiveTrades[ply]
+        if not s then return end
+        s.confirmed = false
+        ActiveTrades[s.partner].confirmed = false
+        local tbl = own and s.offers or s.wants
+        if tbl[slot] then
+            tbl[slot] = nil
+        else
+            tbl[slot] = true
+        end
+        tradeBroadcast(ply, s.partner)
+    end)
+
+    net.Receive("trade_confirm", function(len, ply)
+        local s = ActiveTrades[ply]
+        if not s then return end
+        s.confirmed = true
+        tradeBroadcast(ply, s.partner)
+        if ActiveTrades[s.partner] and ActiveTrades[s.partner].confirmed then
+            finalizeTrade(ply, s.partner)
+        end
+    end)
+
+    hook.Add("PlayerSay", "inventory_trade_cmd", function(ply, text)
+        if string.Trim(string.lower(text)) == "/trade nearby" then
+            local target
+            for _, p in ipairs(player.GetAll()) do
+                if p ~= ply and p:GetPos():Distance(ply:GetPos()) <= 100 then
+                    target = p
+                    break
+                end
+            end
+            if target then
+                if not ActiveTrades[ply] and not ActiveTrades[target] then
+                    startTrade(ply, target)
+                end
+            else
+                showNotification(ply, "No nearby player")
+            end
+            return ""
+        end
+    end)
+
+    hook.Add("PlayerDisconnected", "inventory_trade_cleanup", function(ply)
+        local s = ActiveTrades[ply]
+        if s then
+            endTrade(ply, s.partner)
+        end
     end)
 end
