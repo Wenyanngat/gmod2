@@ -10,7 +10,18 @@ if SERVER then
     AddCSLuaFile("lua/autorun/client/inv_gui.lua")
     AddCSLuaFile("lua/autorun/client/inv_bank_gui.lua")
     AddCSLuaFile("lua/autorun/client/inv_init_c.lua")
-    AddCSLuaFile("lua/autorun/client/inv_trade_gui.lua")   ---- merge note: present only in ybg branch
+    local loadData
+    local saveData
+
+        return {
+            isOccupied = false,
+            Count = 0,
+            Name = "unknown",
+            ItemClass = "unknown",
+            WeaponClass = "unknown",
+            SingleWeight = 0,
+            MaxStack = 20
+        }
     AddCSLuaFile("lua/inv_shared.lua")
     AddCSLuaFile("lua/inv_config.lua")
 
@@ -110,20 +121,16 @@ if SERVER then
                     showNotification(p2, InventoryConfig.Messages.noSpace)
                     endTrade(p1, p2)
                     return
-                end
-                inv1[id] = clearSlot()
+        local path = InventoryConfig.General.playerDataFolder .. "/" .. ply:SteamID64() .. "_" .. typ .. ".dat"
+        if file.Exists(path, "DATA") then
+            local data = util.JSONToTable(file.Read(path, "DATA")) or {}
+                data[i] = data[i] or clearSlot()
+            for i = 1, range do
+                eq[i] = clearSlot()
             end
-        end
-        for id in pairs(ActiveTrades[p2].offers) do
-            local slot = inv2[id]
-            if slot and slot.Count > 0 then
-                if not insertItem(inv1, slot) then
-                    showNotification(p1, InventoryConfig.Messages.noSpace)
-                    showNotification(p2, InventoryConfig.Messages.noSpace)
-                    endTrade(p1, p2)
-                    return
-                end
-                inv2[id] = clearSlot()
+            if not file.Exists(InventoryConfig.General.playerDataFolder, "DATA") then
+                file.CreateDir(InventoryConfig.General.playerDataFolder)
+            file.Write(path, util.TableToJSON(eq))
             end
         end
         saveData(p1, inv1, "Inventory")
@@ -307,7 +314,7 @@ if SERVER then
                 slot.Model        = ent:GetModel()
                 slot.MaxStack     = ent.StackSize
                 slot.SingleWeight = ent.Weight or 1
-                slot.WeaponClass  = (slot.ItemClass == "spawned_weapon") and ent:GetWeaponClass() or nil
+        showNotification(self, InventoryConfig.Messages.noSpace)
 
                 saveData(self, eq, "Inventory")
 
